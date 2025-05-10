@@ -9,11 +9,11 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import reactor.core.publisher.Mono;
 import org.springframework.web.server.ResponseStatusException;
-import static org.mockito.Mockito.*;
 
 import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class CurrencyExchangeServiceTest {
 
@@ -26,6 +26,7 @@ class CurrencyExchangeServiceTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        currencyExchangeService.initCache();
     }
 
     @Test
@@ -35,20 +36,16 @@ class CurrencyExchangeServiceTest {
         double amount = 100.0;
 
         CurrencyExchange exchangeRate = new CurrencyExchange();
-        exchangeRate.setSourceCurrency("USD");
-        exchangeRate.setTargetCurrency("EUR");
-        exchangeRate.setExchangeRate(BigDecimal.valueOf(3.85));
+        exchangeRate.setSourceCurrency(sourceCurrency);
+        exchangeRate.setTargetCurrency(targetCurrency);
+        exchangeRate.setExchangeRate(BigDecimal.valueOf(0.85));
 
         when(currencyExchangeRepository.findBySourceCurrencyAndTargetCurrency(sourceCurrency, targetCurrency))
                 .thenReturn(Mono.just(exchangeRate));
 
-        Mono<Double> convertedAmountMono = currencyExchangeService.convertCurrency(sourceCurrency, targetCurrency,
-                amount);
+        Double result = currencyExchangeService.convertCurrency(sourceCurrency, targetCurrency, amount).block();
 
-        convertedAmountMono.subscribe(convertedAmount -> {
-            assertEquals(85.0, convertedAmount);
-        });
-
+        assertEquals(85.0, result);
         verify(currencyExchangeRepository, times(1))
                 .findBySourceCurrencyAndTargetCurrency(sourceCurrency, targetCurrency);
     }
@@ -62,12 +59,33 @@ class CurrencyExchangeServiceTest {
         when(currencyExchangeRepository.findBySourceCurrencyAndTargetCurrency(sourceCurrency, targetCurrency))
                 .thenReturn(Mono.empty());
 
-        Mono<Double> convertedAmountMono = currencyExchangeService.convertCurrency(sourceCurrency, targetCurrency,
-                amount);
-
         assertThrows(ResponseStatusException.class, () -> {
-            convertedAmountMono.block();
+            currencyExchangeService.convertCurrency(sourceCurrency, targetCurrency, amount).block();
         });
+
+        verify(currencyExchangeRepository, times(1))
+                .findBySourceCurrencyAndTargetCurrency(sourceCurrency, targetCurrency);
+    }
+
+    @Test
+    void testConvertCurrency_UsesCacheAfterFirstCall() {
+        String sourceCurrency = "USD";
+        String targetCurrency = "EUR";
+        double amount = 200.0;
+
+        CurrencyExchange exchangeRate = new CurrencyExchange();
+        exchangeRate.setSourceCurrency(sourceCurrency);
+        exchangeRate.setTargetCurrency(targetCurrency);
+        exchangeRate.setExchangeRate(BigDecimal.valueOf(0.85));
+
+        when(currencyExchangeRepository.findBySourceCurrencyAndTargetCurrency(sourceCurrency, targetCurrency))
+                .thenReturn(Mono.just(exchangeRate));
+
+        Double result1 = currencyExchangeService.convertCurrency(sourceCurrency, targetCurrency, amount).block();
+        assertEquals(170.0, result1);
+
+        Double result2 = currencyExchangeService.convertCurrency(sourceCurrency, targetCurrency, amount).block();
+        assertEquals(170.0, result2);
 
         verify(currencyExchangeRepository, times(1))
                 .findBySourceCurrencyAndTargetCurrency(sourceCurrency, targetCurrency);
