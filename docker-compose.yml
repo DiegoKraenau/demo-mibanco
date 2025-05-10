@@ -1,0 +1,36 @@
+version: "3.8"
+
+services:
+  mongo:
+    image: mongo:5.0
+    container_name: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+      - ./init-currency.js:/docker-entrypoint-initdb.d/init-currency.js:ro
+    networks:
+      - currency-network
+
+  demo-microservice:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: demo-microservice:latest
+    container_name: demo-microservice
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATA_MONGODB_URI=mongodb://mongo:27017/exchange_db
+    depends_on:
+      - mongo
+    networks:
+      - currency-network
+
+networks:
+  currency-network:
+    driver: bridge
+
+volumes:
+  mongo-data:
+    driver: local
